@@ -1,0 +1,36 @@
+{
+  "name": "tagged",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "classify": "tsx src/cli.js",
+    "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
+    "classify-directories": "tsx src/directory-cli.js",
+    "build": "tsc --noEmit && node esbuild.config.mjs --production",
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm test && npm run lint && npm run build",
+    "lint": "eslint src/**/*.ts src/main.ts"
+  },
+  "dependencies": {
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "obsidian": "^1.13.1",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "~5.8.3"
+  },
+  "version": "0.1.2",
+  "description": "Existing-tag recommendations and optional root-note filing for Obsidian.",
+  "main": "dist/main.js"
+}

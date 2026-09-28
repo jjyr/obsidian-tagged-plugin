@@ -1,0 +1,9 @@
+{
+  "id": "tagged",
+  "name": "Tagged",
+  "version": "0.1.2",
+  "minAppVersion": "1.13.0",
+  "description": "Organize notes with existing tags and optional root-folder filing using your preferred LLM.",
+  "author": "jjy",
+  "isDesktopOnly": false
+}

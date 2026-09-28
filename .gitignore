@@ -1,0 +1,39 @@
+# Dependencies and generated builds
+node_modules/
+/dist/
+/coverage/
+*.tsbuildinfo
+
+# Release archives
+/tagged-*.zip
+
+# Local experiments, model downloads and Python environments
+/runs/
+/models/
+/tagged-tags-run-*/
+/tagged-directories-run-*/
+# Legacy output directories remain ignored
+/tag-keeper-run-*/
+/directory-keeper-run-*/
+.venv*/
+__pycache__/
+*.py[cod]
+*.gguf
+*.safetensors
+
+# Local configuration, credentials and Obsidian runtime data
+.env
+.env.*
+!.env.example
+.obsidian/
+/data.json
+
+# Logs, temporary files and OS metadata
+*.log
+.DS_Store
+._*
+*.swp
+*.swo
+*~
+/tmp/
+/.cache/

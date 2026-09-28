@@ -1,0 +1,35 @@
+.tagged-privacy {
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  margin-bottom: var(--size-4-4);
+}
+.tagged-actions {
+  display: flex;
+  gap: var(--size-4-2);
+  justify-content: flex-end;
+}
+.tagged-status {
+  color: var(--text-muted);
+}
+.tagged-test-result {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  margin-top: var(--size-4-2);
+  font-size: var(--font-ui-small);
+}
+
+.tagged-prompts .setting-item:has(textarea) {
+  flex-direction: column;
+  align-items: stretch;
+}
+.tagged-prompts .setting-item:has(textarea) .setting-item-control {
+  width: 100%;
+}
+.tagged-prompts textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+}
