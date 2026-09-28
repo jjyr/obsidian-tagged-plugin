@@ -50,3 +50,17 @@ In a disposable vault, configure a local model and seed several tags and folders
 8. Reorganize all notes, test cancellation, and confirm folder notes receive tags without moving.
 
 A successful build and automated tests are not a substitute for these live-host checks. No live vault is modified by the automated test suite.
+
+## Publishing a release
+
+GitHub Actions publishes a release when a numeric version tag such as `0.1.2` is pushed. Do not prefix the tag with `v`. The workflow requires the tag to match `manifest.json`, `package.json`, and both root versions in `package-lock.json`, then runs `npm ci` and `npm run verify`. It uploads `main.js`, `manifest.json`, and `styles.css` as individual release assets for Obsidian to install. GitHub's built-in token supplies release permissions; no personal token is required.
+
+For a new version, run `npm version NEW_VERSION --no-git-tag-version`, update `manifest.json` to the same version, and commit the changes before tagging:
+
+```sh
+git push origin main
+git tag 0.1.3
+git push origin 0.1.3
+```
+
+Use the actual new version in place of `0.1.3`. The tag must point at a commit containing `.github/workflows/release.yml`. Failed verification prevents publishing. Rerunning the workflow for an existing release replaces its three assets with the verified build from the same tag.

@@ -1,0 +1,66 @@
+name: Publish Obsidian plugin
+
+on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate release version
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const read = (file) => JSON.parse(readFileSync(file, 'utf8'));
+          const version = process.env.RELEASE_VERSION;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            throw new Error('Use a numeric version tag without a v prefix, such as 0.1.2.');
+          }
+          for (const file of ['manifest.json', 'package.json', 'package-lock.json']) {
+            if (read(file).version !== version) {
+              throw new Error(`${file} version must match tag ${version}.`);
+            }
+          }
+          if (read('package-lock.json').packages[''].version !== version) {
+            throw new Error('The lockfile root package version must match the tag.');
+          }
+          JS
+      - run: npm ci
+      - name: Test, lint and build
+        run: npm run verify
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          test -s dist/main.js
+          test -s dist/manifest.json
+          test -s dist/styles.css
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_VERSION" dist/main.js dist/manifest.json dist/styles.css --clobber
+          else
+            gh release create "$RELEASE_VERSION" \
+              --verify-tag \
+              --title "$RELEASE_VERSION" \
+              --generate-notes \
+              dist/main.js dist/manifest.json dist/styles.css
+          fi
