@@ -24,3 +24,11 @@ Key options:
 - **Automatically file root notes** — move root notes into existing top-level folders when confidence is high. Off by default. Daily notes are skipped by default; tags and filename patterns can also be excluded.
 - **Organize root assets** — optionally move root images into `Assets` or a custom folder when root filing is enabled.
 - **LLM prompts** — edit tag and directory prompts or restore their defaults.
+
+## Connection failures
+
+Automatic organization failures do not show pop-up notices. The desktop status bar shows **Tagged: AI unavailable**; hover for the last error and retry details. On mobile, check **Automatic organization status** in Tagged settings and use **Refresh** to update it.
+
+After an automatic failure, Tagged retries up to three times at 30-second intervals, then once every 10 minutes. Edits during the wait are merged into pending work; retries read the latest note content. Successful organization or a successful manual connection test resets the retry count. **Stop organizing**, settings changes, and unloading the plugin cancel pending retries.
+
+**Test connection** runs immediately, including during a retry wait, and displays an explicit success or failure result.

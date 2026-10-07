@@ -44,6 +44,10 @@ export default class TaggedPlugin extends Plugin {
   } | null = null;
   private requestTimers = new Map<number, () => void>();
   private lastErrorNotice = 0;
+  private automaticRetryCount = 0;
+  private automaticRetryTimer: number | null = null;
+  private deferredAutomatic = new Set<TFile>();
+  private lastAutomaticError = '';
 
   async onload() {
     const data = (await this.loadData()) as Partial<StoredData> | null;
@@ -74,7 +78,12 @@ export default class TaggedPlugin extends Plugin {
         const revision = this.revision;
         const batch = this.batch;
         const settings = { ...this.settings };
-        this.status.setText(`Tagged: organizing ${file.basename}`);
+        if (!force && this.automaticRetryTimer !== null && file.extension.toLowerCase() === 'md') {
+          this.deferredAutomatic.add(file);
+          this.updateStatus();
+          return;
+        }
+        if (!this.lastAutomaticError) this.status.setText(`Tagged: organizing ${file.basename}`);
         let finished = true;
         try {
           if (file.extension.toLowerCase() !== 'md') {
@@ -97,10 +106,12 @@ export default class TaggedPlugin extends Plugin {
             force,
           );
           finished = outcome !== 'stale';
+          if (outcome === 'classified' || outcome === 'moved') this.resetAutomaticRetry();
         } catch (error) {
           if (revision === this.revision && this.alive) {
             if (batch && this.batch === batch && batch.remaining.has(file)) batch.errors++;
-            this.reportError(error);
+            if (force) this.reportError(error);
+            else this.deferAutomaticRetry(file, error);
           }
         } finally {
           if (finished && batch && this.batch === batch && batch.remaining.delete(file))
@@ -176,6 +187,7 @@ export default class TaggedPlugin extends Plugin {
             if (key === file.path || key.startsWith(`${file.path}/`)) delete this.managedTags[key];
           if (file instanceof TFile) {
             this.queue.remove(file);
+            this.deferredAutomatic.delete(file);
             this.remembered.delete(file);
             if (this.batch?.remaining.delete(file)) this.batch.done++;
           }
@@ -204,6 +216,7 @@ export default class TaggedPlugin extends Plugin {
     this.alive = false;
     this.revision++;
     this.queue?.stop();
+    this.clearAutomaticRetry();
     for (const [id, reject] of this.requestTimers) {
       window.clearTimeout(id);
       reject();
@@ -225,6 +238,10 @@ export default class TaggedPlugin extends Plugin {
     } else {
       if (!this.configured() || !(this.settings.autoTags || this.settings.autoMove)) return;
       if (!this.settings.autoTags && file.parent !== this.app.vault.getRoot()) return;
+    }
+    if (!force && this.automaticRetryTimer !== null && file.extension.toLowerCase() === 'md') {
+      this.deferredAutomatic.add(file);
+      return;
     }
     this.queue.schedule(file, this.settings.delaySeconds * 1000, force);
   }
@@ -446,6 +463,8 @@ export default class TaggedPlugin extends Plugin {
   }
   async testConnection() {
     await this.client({ ...this.settings }).test({ ...this.settings });
+    this.resetAutomaticRetry();
+    this.updateStatus();
   }
   async changeSettings(next: TaggedSettings) {
     const error =
@@ -459,6 +478,7 @@ export default class TaggedPlugin extends Plugin {
     this.remembered = new WeakMap<TFile, string>();
     this.revision++;
     this.queue.clear();
+    this.clearAutomaticRetry();
     this.batch = null;
     await this.persist();
     this.updateStatus();
@@ -492,11 +512,54 @@ export default class TaggedPlugin extends Plugin {
   cancel() {
     this.revision++;
     this.queue.clear();
+    this.clearAutomaticRetry();
     this.batch = null;
     this.updateStatus();
     new Notice(
       'Tagged: pending work stopped. Results from the current request will be ignored. Future edits still follow your settings.',
     );
+  }
+  getAutomaticStatus() {
+    return this.lastAutomaticError ? 'Tagged: AI unavailable' : 'Tagged: ready';
+  }
+  getAutomaticDetails() {
+    if (!this.lastAutomaticError) return '';
+    const retry =
+      this.automaticRetryCount > 3
+        ? 'Automatic organization is paused. Retrying every 10 minutes.'
+        : 'Automatic organization is paused. Retrying in 30 seconds.';
+    return `${retry}\nLast error: ${this.lastAutomaticError}`;
+  }
+  private deferAutomaticRetry(file: TFile, error: unknown) {
+    this.lastAutomaticError =
+      error instanceof Error ? error.message : 'Could not organize this note.';
+    this.remembered.delete(file);
+    this.deferredAutomatic.add(file);
+    if (this.automaticRetryTimer !== null) return;
+    this.automaticRetryCount++;
+    const delay = this.automaticRetryCount <= 3 ? 30000 : 600000;
+    this.automaticRetryTimer = window.setTimeout(() => {
+      this.automaticRetryTimer = null;
+      if (!this.alive) return;
+      const files = [...this.deferredAutomatic];
+      this.deferredAutomatic.clear();
+      for (const pending of files) {
+        if (this.app.vault.getFileByPath(pending.path) === pending) this.queue.add(pending, false);
+      }
+      this.updateStatus();
+    }, delay);
+  }
+  private resetAutomaticRetry() {
+    const files = [...this.deferredAutomatic];
+    this.clearAutomaticRetry();
+    for (const file of files) this.schedule(file);
+  }
+  private clearAutomaticRetry() {
+    if (this.automaticRetryTimer !== null) window.clearTimeout(this.automaticRetryTimer);
+    this.automaticRetryTimer = null;
+    this.automaticRetryCount = 0;
+    this.lastAutomaticError = '';
+    this.deferredAutomatic.clear();
   }
   private updateStatus() {
     if (!this.alive) return;
@@ -506,12 +569,15 @@ export default class TaggedPlugin extends Plugin {
       );
       this.batch = null;
     }
+    this.status.title = this.getAutomaticDetails();
     this.status.setText(
-      this.batch
-        ? `Tagged: ${this.batch.done}/${this.batch.total}`
-        : this.queue?.size
-          ? 'Tagged: pending'
-          : 'Tagged',
+      this.lastAutomaticError
+        ? this.getAutomaticStatus()
+        : this.batch
+          ? `Tagged: ${this.batch.done}/${this.batch.total}`
+          : this.queue?.size
+            ? 'Tagged: pending'
+            : 'Tagged: ready',
     );
   }
   private reportError(error: unknown) {

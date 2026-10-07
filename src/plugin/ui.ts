@@ -101,6 +101,20 @@ export class TaggedSettingTab extends PluginSettingTab {
         heading: 'API connection',
         items: [
           {
+            name: 'Automatic organization status',
+            render: (setting) => {
+              const details = setting.infoEl.createDiv({ cls: 'tagged-test-result' });
+              const refresh = () =>
+                details.setText(
+                  [this.plugin.getAutomaticStatus(), this.plugin.getAutomaticDetails()]
+                    .filter(Boolean)
+                    .join('\n'),
+                );
+              refresh();
+              setting.addButton((button) => button.setButtonText('Refresh').onClick(refresh));
+            },
+          },
+          {
             name: 'API base URL',
             desc: 'Include the API prefix, usually /v1. Do not include /chat/completions.',
             control: {
@@ -142,14 +156,14 @@ export class TaggedSettingTab extends PluginSettingTab {
                 button.setButtonText('Test').onClick(async () => {
                   button.setDisabled(true);
                   button.setButtonText('Testing…');
-                  details.setText('Testing the configured API…');
+                  details.setText('Testing connection…');
                   try {
                     await this.plugin.testConnection();
-                    details.setText('Connection and JSON response verified.');
-                    new Notice('Tagged: connection and JSON response verified.');
+                    details.setText('Connection successful. JSON response verified.');
+                    new Notice('Tagged: connection successful. JSON response verified.');
                   } catch (error) {
                     const message = error instanceof Error ? error.message : 'Connection failed.';
-                    details.setText(message);
+                    details.setText(`Connection test failed.\n${message}`);
                     new Notice(message, 15000);
                   } finally {
                     button.setDisabled(false);

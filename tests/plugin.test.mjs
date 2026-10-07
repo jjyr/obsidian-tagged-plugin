@@ -36,6 +36,13 @@ async function harness({
     timers = new Map(),
     events = new Map();
   let timerId = 0;
+  const status = {
+    text: '',
+    title: '',
+    setText(text) {
+      this.text = text;
+    },
+  };
   class TFolder {
     constructor(path, parent) {
       this.path = path;
@@ -150,7 +157,7 @@ async function harness({
       this.commands.push(command);
     }
     addStatusBarItem() {
-      return { setText: () => {} };
+      return status;
     }
     registerEvent(ref) {
       this.refs.push(ref);
@@ -190,7 +197,10 @@ async function harness({
                 { tag: 'manual', relevance: 'low' },
               ],
             }
-          : { directory: 'AI', confidence: 'high' };
+          : {
+              directory: body.messages[1].content.includes('Connection test') ? null : 'AI',
+              confidence: 'high',
+            };
       return {
         status: 200,
         text: JSON.stringify({
@@ -236,6 +246,7 @@ async function harness({
     plugin.commands.find((c) => c.id === 'organize-current-note').checkCallback(false);
   return {
     plugin,
+    status,
     app,
     note,
     files,
@@ -720,4 +731,87 @@ test('prompt editors show defaults, persist overrides, and reset each prompt ind
   assert.equal(h.plugin.saved.settings.directoryPrompt, DIRECTORY_PROMPT);
   h.plugin.onunload();
   reloaded.plugin.onunload();
+});
+
+test('automatic failures retry three times, then every ten minutes, without notices', async () => {
+  let failing = true;
+  const h = await harness({
+    keepRefresh: true,
+    responseHook: () => {
+      if (failing) throw new Error('ECONNREFUSED');
+    },
+  });
+  const fireRetry = async (ms) => {
+    const retry = [...h.timers.entries()].find(([, timer]) => timer.ms === ms);
+    assert.ok(retry, `Expected a ${ms} ms retry timer`);
+    h.timers.delete(retry[0]);
+    retry[1].fn();
+    await settle();
+  };
+  h.emit('modify', h.note);
+  await h.fireDebounce();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.status.text, 'Tagged: AI unavailable');
+  for (let i = 0; i < 3; i++) {
+    h.note.source += `\nEdit ${i}`;
+    h.emit('modify', h.note);
+    await h.fireDebounce();
+    assert.equal(h.requests.length, i + 1);
+    await fireRetry(30000);
+  }
+  assert.equal(h.requests.length, 4);
+  assert.match(h.status.title, /Retrying every 10 minutes/);
+  assert.deepEqual(h.notices, []);
+  await fireRetry(600000);
+  assert.equal(h.requests.length, 5);
+  failing = false;
+  await fireRetry(600000);
+  await h.fireDebounce();
+  assert.equal(h.status.text, 'Tagged: ready');
+  assert.equal(h.status.title, '');
+  assert.match(h.note.source, /Edit 2/);
+  failing = true;
+  h.note.source += '\nAnother edit';
+  h.emit('modify', h.note);
+  await h.fireDebounce();
+  assert.ok([...h.timers.values()].some((timer) => timer.ms === 30000));
+  h.plugin.onunload();
+  assert.equal(h.timers.size, 0);
+});
+
+test('manual connection test bypasses automatic cooldown and success resets retries', async () => {
+  let failing = true;
+  const h = await harness({
+    keepRefresh: true,
+    responseHook: () => {
+      if (failing) throw new Error('ECONNREFUSED');
+    },
+  });
+  h.emit('modify', h.note);
+  await h.fireDebounce();
+  await assert.rejects(h.plugin.testConnection(), /Could not reach the API/);
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.status.text, 'Tagged: AI unavailable');
+  failing = false;
+  await h.plugin.testConnection();
+  assert.equal(h.status.title, '');
+  assert.ok(![...h.timers.values()].some((timer) => timer.ms === 30000 || timer.ms === 600000));
+  await h.fireDebounce();
+  assert.match(h.note.source, /tags:/);
+  h.plugin.onunload();
+});
+
+test('stopping automatic retries cancels the timer and deferred notes', async () => {
+  const h = await harness({
+    keepRefresh: true,
+    responseHook: () => {
+      throw new Error('offline');
+    },
+  });
+  h.emit('modify', h.note);
+  await h.fireDebounce();
+  h.plugin.cancel();
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.status.text, 'Tagged: ready');
+  h.plugin.onunload();
 });
